@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "urql";
 import toast from "react-hot-toast";
-import { Button } from "../ui/Button";
+import { Button } from "./ui/Button";
 import { X } from "lucide-react";
 
 const CREATE_TICKET_MUTATION = `
