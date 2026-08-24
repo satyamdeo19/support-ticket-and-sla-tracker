@@ -9,34 +9,18 @@
  * with the real resolver and import the resolver file here.
  */
 
-import { GraphQLError } from "graphql";
 import { authResolvers } from "./auth.resolvers.ts";
-
-// Reusable stub for unimplemented resolvers
-const notImplemented = (): never => {
-  throw new GraphQLError("This resolver is not yet implemented.", {
-    extensions: { code: "NOT_IMPLEMENTED" },
-  });
-};
+import { ticketResolvers } from "./ticket.resolvers.ts";
 
 export const resolvers = {
   Query: {
-    tickets: notImplemented,
-    ticket: notImplemented,
-    dashboard: notImplemented,
-    users: notImplemented,
-    holidays: notImplemented,
+    ...ticketResolvers.Query,
   },
 
   Mutation: {
     ...authResolvers.Mutation,
-
-    // Ticket mutations — implemented in Step 4
-    createTicket: notImplemented,
-    assignTicket: notImplemented,
-    changeTicketStatus: notImplemented,
-    addComment: notImplemented,
-    resolveTicket: notImplemented,
-    addHoliday: notImplemented,
+    ...ticketResolvers.Mutation,
   },
+  
+  Ticket: ticketResolvers.Ticket,
 };
