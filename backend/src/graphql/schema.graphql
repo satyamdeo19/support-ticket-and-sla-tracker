@@ -1,0 +1,166 @@
+# ============================================================
+# Enums
+# ============================================================
+
+enum UserRole {
+  REPORTER
+  AGENT
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum SLAState {
+  ON_TRACK
+  AT_RISK
+  BREACHED
+}
+
+# ============================================================
+# Core Types
+# ============================================================
+
+type User {
+  id: ID!
+  name: String!
+  email: String!
+  role: UserRole!
+  createdAt: String!
+}
+
+type SLAInfo {
+  state: SLAState!
+  targetDate: String!
+  remainingBusinessMinutes: Int!
+  percentageConsumed: Float!
+}
+
+type Ticket {
+  id: ID!
+  title: String!
+  description: String!
+  priority: Priority!
+  status: TicketStatus!
+  reporter: User!
+  assignee: User
+  comments: [Comment!]!
+  createdAt: String!
+  firstResponseAt: String
+  resolvedAt: String
+  # Computed SLA fields (resolved server-side)
+  firstResponseSLA: SLAInfo!
+  resolutionSLA: SLAInfo!
+}
+
+type Comment {
+  id: ID!
+  content: String!
+  author: User!
+  ticket: Ticket!
+  createdAt: String!
+}
+
+type Holiday {
+  id: ID!
+  date: String!
+  name: String!
+}
+
+type AuthPayload {
+  token: String!
+  user: User!
+}
+
+# ============================================================
+# Pagination
+# ============================================================
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type TicketConnection {
+  nodes: [Ticket!]!
+  pageInfo: PageInfo!
+}
+
+type TicketDashboard {
+  openTickets: Int!
+  inProgressTickets: Int!
+  atRiskTickets: Int!
+  breachedTickets: Int!
+}
+
+# ============================================================
+# Queries
+# ============================================================
+
+type Query {
+  # Fetch paginated + filterable tickets
+  tickets(
+    status: TicketStatus
+    priority: Priority
+    assigneeId: ID
+    slaState: SLAState
+    take: Int
+    cursor: String
+  ): TicketConnection!
+
+  # Fetch a single ticket by ID
+  ticket(id: ID!): Ticket
+
+  # Summary dashboard counts
+  dashboard: TicketDashboard!
+
+  # List users, optionally filtered by role
+  users(role: UserRole): [User!]!
+
+  # List all public holidays
+  holidays: [Holiday!]!
+}
+
+# ============================================================
+# Mutations
+# ============================================================
+
+type Mutation {
+  # Auth
+  register(
+    name: String!
+    email: String!
+    password: String!
+    role: UserRole
+  ): AuthPayload!
+
+  login(email: String!, password: String!): AuthPayload!
+
+  # Tickets
+  createTicket(
+    title: String!
+    description: String!
+    priority: Priority!
+  ): Ticket!
+
+  assignTicket(ticketId: ID!, assigneeId: ID!): Ticket!
+
+  changeTicketStatus(ticketId: ID!, status: TicketStatus!): Ticket!
+
+  addComment(ticketId: ID!, content: String!): Comment!
+
+  resolveTicket(ticketId: ID!): Ticket!
+
+  # Holidays
+  addHoliday(date: String!, name: String!): Holiday!
+}
