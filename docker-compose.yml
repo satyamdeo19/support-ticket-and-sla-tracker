@@ -1,0 +1,17 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sla_tracker_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: slauser
+      POSTGRES_PASSWORD: slapassword
+      POSTGRES_DB: sla_tracker
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
