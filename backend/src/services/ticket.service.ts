@@ -1,5 +1,6 @@
-import { PrismaClient, TicketStatus, Priority, UserRole, Ticket } from "@prisma/client";
-import { InvalidStatusTransitionError, TicketNotFoundError } from "../utils/errors.ts";
+import { PrismaClient, TicketStatus, Priority, UserRole, Prisma } from "@prisma/client";
+import type { Ticket } from "@prisma/client";
+import { InvalidStatusTransitionError, TicketNotFoundError, UserNotFoundError, ValidationError, InvalidCommentError } from "../utils/errors.ts";
 import {
   SLA_POLICIES,
   calculateSLATargetDate,
@@ -29,17 +30,18 @@ export async function createTicket(
     reporterId: string;
   }
 ) {
-  const now = new Date();
-  
-  // Actually, we don't need to calculate the target date and save it to the DB for SLA.
-  // Wait, does the DB schema have SLA fields? Let me check schema.prisma. 
-  // No, the context.md says: Computed SLA fields (resolved server-side).
-  // I will just create the ticket.
+  // Validate required fields
+  if (!data.title.trim()) {
+    throw new ValidationError("Ticket title cannot be empty.");
+  }
+  if (!data.description.trim()) {
+    throw new ValidationError("Ticket description cannot be empty.");
+  }
 
   return prisma.ticket.create({
     data: {
-      title: data.title,
-      description: data.description,
+      title: data.title.trim(),
+      description: data.description.trim(),
       priority: data.priority,
       status: "OPEN",
       reporterId: data.reporterId,
@@ -61,6 +63,11 @@ export async function addComment(
     authorRole: UserRole;
   }
 ) {
+  // Validate content
+  if (!data.content.trim()) {
+    throw new InvalidCommentError();
+  }
+
   const ticket = await prisma.ticket.findUnique({
     where: { id: data.ticketId },
   });
@@ -125,9 +132,9 @@ export async function changeTicketStatus(
 
   // If changing from RESOLVED to something else, we might need to un-freeze resolvedAt
   // Depending on business rules, reopening a ticket might clear resolvedAt.
-  const updateData: any = { status: data.status };
+  const updateData: Prisma.TicketUpdateInput = { status: data.status };
   if (ticket.status === "RESOLVED" && data.status !== "CLOSED") {
-      updateData.resolvedAt = null;
+    updateData.resolvedAt = null;
   }
 
   return prisma.ticket.update({
@@ -181,23 +188,29 @@ export async function assignTicket(
   prisma: PrismaClient,
   data: { ticketId: string; assigneeId: string }
 ) {
-    const ticket = await prisma.ticket.findUnique({
-        where: { id: data.ticketId },
-    });
-    
-    if (!ticket) {
-        throw new TicketNotFoundError(data.ticketId);
-    }
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: data.ticketId },
+  });
 
-    return prisma.ticket.update({
-        where: { id: data.ticketId },
-        data: { assigneeId: data.assigneeId },
-        include: {
-            reporter: true,
-            assignee: true,
-            comments: { include: { author: true } },
-        }
-    });
+  if (!ticket) {
+    throw new TicketNotFoundError(data.ticketId);
+  }
+
+  // Verify the assignee exists
+  const assignee = await prisma.user.findUnique({ where: { id: data.assigneeId } });
+  if (!assignee) {
+    throw new UserNotFoundError(data.assigneeId);
+  }
+
+  return prisma.ticket.update({
+    where: { id: data.ticketId },
+    data: { assigneeId: data.assigneeId },
+    include: {
+      reporter: true,
+      assignee: true,
+      comments: { include: { author: true } },
+    }
+  });
 }
 
 export async function computeTicketSLA(
@@ -256,7 +269,7 @@ export async function getTickets(
         cursor?: string;
     }
 ) {
-    const where: any = {};
+    const where: Prisma.TicketWhereInput = {};
     if (filters.status) where.status = filters.status;
     if (filters.priority) where.priority = filters.priority;
     if (filters.assigneeId) where.assigneeId = filters.assigneeId;
@@ -285,7 +298,7 @@ export async function getTickets(
     }
 
     if (tickets.length > 0) {
-        endCursor = tickets[tickets.length - 1].id;
+        endCursor = tickets[tickets.length - 1]?.id ?? null;
     }
 
     return {

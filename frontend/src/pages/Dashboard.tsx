@@ -1,12 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "urql";
 import { Link } from "react-router-dom";
-import { Plus, LayoutDashboard, Clock, AlertTriangle, XCircle, ArrowRight } from "lucide-react";
+import { Plus, LayoutDashboard, Clock, AlertTriangle, XCircle, ArrowRight, ArrowUpDown } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Card, CardContent } from "../components/ui/Card";
 import { CreateTicketModal } from "../components/CreateTicketModal";
 import { formatDate } from "../lib/utils";
+import type { Ticket, TicketConnection, TicketDashboard, SLAState, Priority, TicketStatus } from "../lib/types";
+
+type SortField = "createdAt" | "priority";
+type SortDir = "asc" | "desc";
+
+const PRIORITY_ORDER: Record<Priority, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, URGENT: 3 };
 
 const DASHBOARD_QUERY = `
   query GetDashboard {
@@ -41,16 +47,15 @@ const TICKETS_QUERY = `
   }
 `;
 
-function SLAStateBadge({ state, targetDate }: { state: string; targetDate: string }) {
-  const isPast = new Date(targetDate) < new Date();
+function SLAStateBadge({ state, targetDate }: { state: SLAState; targetDate: string }) {
   const dateStr = formatDate(targetDate);
-  
+
   if (state === "BREACHED") return <Badge variant="danger">🔴 Breached</Badge>;
   if (state === "AT_RISK") return <Badge variant="warning">🟠 At Risk ({dateStr})</Badge>;
   return <Badge variant="success">🟢 On Track</Badge>;
 }
 
-function PriorityBadge({ priority }: { priority: string }) {
+function PriorityBadge({ priority }: { priority: Priority }) {
   switch (priority) {
     case "URGENT": return <Badge variant="danger">Urgent</Badge>;
     case "HIGH": return <Badge variant="warning">High</Badge>;
@@ -59,7 +64,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   }
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: { status: TicketStatus }) {
   switch (status) {
     case "OPEN": return <Badge variant="default">Open</Badge>;
     case "IN_PROGRESS": return <Badge variant="warning">In Progress</Badge>;
@@ -70,19 +75,22 @@ function StatusBadge({ status }: { status: string }) {
 
 export function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<TicketStatus | "">("");
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "">("");
+  const [slaStateFilter, setSlaStateFilter] = useState<SLAState | "">("");
+  const [sortField, setSortField] = useState<SortField>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [cursor, setCursor] = useState<string | null>(null);
 
-  const [{ data: dashboardData, fetching: dashboardFetching }] = useQuery({
+  const [{ data: dashboardData, fetching: dashboardFetching }] = useQuery<{ dashboard: TicketDashboard }>({
     query: DASHBOARD_QUERY,
     requestPolicy: "cache-and-network",
   });
 
-  const [{ data: ticketsData, fetching: ticketsFetching }, executeTicketsQuery] = useQuery({
+  const [{ data: ticketsData, fetching: ticketsFetching }, executeTicketsQuery] = useQuery<{ tickets: TicketConnection }>({
     query: TICKETS_QUERY,
-    variables: { 
-      status: statusFilter || undefined, 
+    variables: {
+      status: statusFilter || undefined,
       priority: priorityFilter || undefined,
       take: 10,
       cursor
@@ -103,8 +111,43 @@ export function Dashboard() {
     setCursor(null);
   };
 
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  };
+
   const stats = dashboardData?.dashboard;
-  const tickets = ticketsData?.tickets.nodes || [];
+  const rawTickets: Ticket[] = ticketsData?.tickets.nodes ?? [];
+
+  // Post-fetch filter by SLA state (computed server-side, returned in payload)
+  const filteredTickets = slaStateFilter
+    ? rawTickets.filter(t => t.resolutionSLA.state === slaStateFilter || t.firstResponseSLA.state === slaStateFilter)
+    : rawTickets;
+
+  // Client-side sort on the fetched page
+  const tickets = [...filteredTickets].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === "createdAt") {
+      cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    } else if (sortField === "priority") {
+      cmp = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  const SortButton = ({ field, label }: { field: SortField; label: string }) => (
+    <button
+      onClick={() => toggleSort(field)}
+      className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+    >
+      {label}
+      <ArrowUpDown className={`w-3 h-3 ${sortField === field ? "text-indigo-600" : "opacity-40"}`} />
+    </button>
+  );
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -182,9 +225,9 @@ export function Dashboard() {
       {/* Filters & Table */}
       <Card>
         <div className="p-4 border-b border-slate-100 flex flex-wrap gap-4 bg-slate-50/50 rounded-t-xl">
-          <select 
+          <select
             value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); handleResetPagination(); }}
+            onChange={(e) => { setStatusFilter(e.target.value as TicketStatus | ""); handleResetPagination(); }}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <option value="">All Statuses</option>
@@ -194,9 +237,9 @@ export function Dashboard() {
             <option value="CLOSED">Closed</option>
           </select>
 
-          <select 
+          <select
             value={priorityFilter}
-            onChange={(e) => { setPriorityFilter(e.target.value); handleResetPagination(); }}
+            onChange={(e) => { setPriorityFilter(e.target.value as Priority | ""); handleResetPagination(); }}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
             <option value="">All Priorities</option>
@@ -205,15 +248,26 @@ export function Dashboard() {
             <option value="HIGH">High</option>
             <option value="URGENT">Urgent</option>
           </select>
+
+          <select
+            value={slaStateFilter}
+            onChange={(e) => { setSlaStateFilter(e.target.value as SLAState | ""); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All SLA States</option>
+            <option value="ON_TRACK">On Track</option>
+            <option value="AT_RISK">At Risk</option>
+            <option value="BREACHED">Breached</option>
+          </select>
         </div>
         
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 border-b border-slate-100">
               <tr>
-                <th className="px-6 py-4 font-medium">Ticket</th>
+                <th className="px-6 py-4 font-medium"><SortButton field="createdAt" label="Ticket" /></th>
                 <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium">Priority</th>
+                <th className="px-6 py-4 font-medium"><SortButton field="priority" label="Priority" /></th>
                 <th className="px-6 py-4 font-medium">Assignee</th>
                 <th className="px-6 py-4 font-medium">SLA State</th>
                 <th className="px-6 py-4 font-medium text-right">Action</th>
@@ -233,7 +287,7 @@ export function Dashboard() {
                   </td>
                 </tr>
               ) : (
-                tickets.map((ticket: any) => (
+                tickets.map((ticket: Ticket) => (
                   <tr key={ticket.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4">
                       <p className="font-medium text-slate-900 line-clamp-1">{ticket.title}</p>
@@ -241,11 +295,11 @@ export function Dashboard() {
                     </td>
                     <td className="px-6 py-4"><StatusBadge status={ticket.status} /></td>
                     <td className="px-6 py-4"><PriorityBadge priority={ticket.priority} /></td>
-                    <td className="px-6 py-4 text-slate-600">{ticket.assignee?.name || "Unassigned"}</td>
+                    <td className="px-6 py-4 text-slate-600">{ticket.assignee?.name ?? "Unassigned"}</td>
                     <td className="px-6 py-4">
-                      <SLAStateBadge 
-                        state={ticket.resolutionSLA.state} 
-                        targetDate={ticket.resolutionSLA.targetDate} 
+                      <SLAStateBadge
+                        state={ticket.resolutionSLA.state}
+                        targetDate={ticket.resolutionSLA.targetDate}
                       />
                     </td>
                     <td className="px-6 py-4 text-right">

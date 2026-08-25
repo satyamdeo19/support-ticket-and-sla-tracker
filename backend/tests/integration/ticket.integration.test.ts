@@ -18,10 +18,8 @@ describe("Ticket Integration", () => {
   let testTicketId: string;
 
   beforeAll(async () => {
-    // Clean up before test runs
-    await prisma.comment.deleteMany();
-    await prisma.ticket.deleteMany();
-    await prisma.user.deleteMany();
+    // Truncate all test tables before the run
+    await prisma.$executeRawUnsafe(`TRUNCATE "Comment", "Ticket", "User" CASCADE`);
 
     const passwordHash = await hashPassword("testpass");
     
@@ -47,10 +45,8 @@ describe("Ticket Integration", () => {
   });
 
   afterAll(async () => {
-    // Clean up
-    await prisma.comment.deleteMany();
-    await prisma.ticket.deleteMany();
-    await prisma.user.deleteMany();
+    // Truncate test tables after the run
+    await prisma.$executeRawUnsafe(`TRUNCATE "Comment", "Ticket", "User" CASCADE`);
     await prisma.$disconnect();
   });
 
