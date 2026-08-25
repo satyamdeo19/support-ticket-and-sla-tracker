@@ -74,8 +74,8 @@ Open a terminal in the `backend/` directory:
 cd backend
 bun install
 
-# Push the schema to the database (creates tables)
-bunx prisma db push
+# Run migrations to create all tables with proper indexes
+bunx prisma migrate dev
 
 # Run the seeder to populate dummy data
 bun run prisma/seed.ts
@@ -99,6 +99,128 @@ Navigate to **http://localhost:5173**.
 The database seeder provisions two users you can use to test role-based access:
 - **Agent**: `agent@example.com` / `password123`
 - **Reporter**: `reporter@example.com` / `password123`
+
+### 5. Running Tests
+```bash
+cd backend
+
+# Run all tests (unit + integration)
+bun run test
+
+# Watch mode for development
+bun run test:watch
+```
+The integration test requires the Docker PostgreSQL container to be running and `DATABASE_URL` to be set in `.env`.
+
+---
+
+## 📡 Example GraphQL Queries & Mutations
+
+All requests go to `http://localhost:4000/graphql`. Authenticated requests require the header:
+```
+Authorization: Bearer <token>
+```
+
+### Auth
+```graphql
+# Register a new user
+mutation {
+  register(name: "Alice", email: "alice@example.com", password: "secret", role: REPORTER) {
+    token
+    user { id name role }
+  }
+}
+
+# Login
+mutation {
+  login(email: "agent@example.com", password: "password123") {
+    token
+    user { id name role }
+  }
+}
+```
+
+### Tickets
+```graphql
+# Create a ticket (requires auth)
+mutation {
+  createTicket(title: "Login broken", description: "Users cannot log in.", priority: HIGH) {
+    id title status priority
+    firstResponseSLA { state targetDate remainingBusinessMinutes }
+    resolutionSLA { state targetDate remainingBusinessMinutes }
+  }
+}
+
+# List tickets with filters and pagination
+query {
+  tickets(status: OPEN, priority: HIGH, take: 10) {
+    nodes {
+      id title status priority
+      assignee { name }
+      resolutionSLA { state remainingBusinessMinutes }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+
+# Fetch a single ticket
+query {
+  ticket(id: "<ticket-id>") {
+    id title description status priority
+    reporter { name }
+    assignee { name }
+    firstResponseSLA { state targetDate remainingBusinessMinutes }
+    resolutionSLA { state targetDate remainingBusinessMinutes }
+    comments { id content createdAt author { name role } }
+  }
+}
+
+# Dashboard summary
+query {
+  dashboard {
+    openTickets inProgressTickets atRiskTickets breachedTickets
+  }
+}
+```
+
+### Agent Actions (requires AGENT role)
+```graphql
+# Assign ticket
+mutation {
+  assignTicket(ticketId: "<id>", assigneeId: "<agent-id>") {
+    id assignee { name }
+  }
+}
+
+# Change status
+mutation {
+  changeTicketStatus(ticketId: "<id>", status: IN_PROGRESS) {
+    id status
+  }
+}
+
+# Resolve ticket
+mutation {
+  resolveTicket(ticketId: "<id>") {
+    id status resolvedAt
+    resolutionSLA { state }
+  }
+}
+
+# Add comment
+mutation {
+  addComment(ticketId: "<id>", content: "Investigating now.") {
+    id content createdAt author { name role }
+  }
+}
+
+# Add holiday
+mutation {
+  addHoliday(date: "2026-01-26", name: "Republic Day") {
+    id date name
+  }
+}
+```
 
 ---
 

@@ -63,6 +63,12 @@ model Ticket {
   createdAt       DateTime  @default(now())
   firstResponseAt DateTime?
   resolvedAt      DateTime?
+
+  // Indexes for commonly filtered fields
+  @@index([status])
+  @@index([priority])
+  @@index([assigneeId])
+  @@index([createdAt])
 }
 
 model Comment {

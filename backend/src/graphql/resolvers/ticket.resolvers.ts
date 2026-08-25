@@ -1,5 +1,6 @@
-import { Priority, TicketStatus, Ticket } from "@prisma/client";
-import { GraphQLContext } from "../context.ts";
+import { Priority, TicketStatus, UserRole } from "@prisma/client";
+import type { Ticket } from "@prisma/client";
+import type { GraphQLContext } from "../context.ts";
 import { UnauthorizedError, ForbiddenError } from "../../utils/errors.ts";
 import {
   createTicket,
@@ -100,7 +101,7 @@ export const ticketResolvers = {
       };
     },
     
-    users: async (_parent: unknown, args: { role?: any }, ctx: GraphQLContext) => {
+    users: async (_parent: unknown, args: { role?: UserRole }, ctx: GraphQLContext) => {
       requireAuth(ctx);
       return ctx.prisma.user.findMany({
           ...(args.role && { where: { role: args.role } })

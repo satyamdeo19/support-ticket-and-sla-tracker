@@ -3,6 +3,7 @@ import { useMutation } from "urql";
 import toast from "react-hot-toast";
 import { Button } from "./ui/Button";
 import { X } from "lucide-react";
+import type { Priority } from "../lib/types";
 
 const CREATE_TICKET_MUTATION = `
   mutation CreateTicket($title: String!, $description: String!, $priority: Priority!) {
@@ -26,7 +27,7 @@ export function CreateTicketModal({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("MEDIUM");
+  const [priority, setPriority] = useState<Priority>("MEDIUM");
   
   const [{ fetching }, createTicket] = useMutation(CREATE_TICKET_MUTATION);
 
@@ -77,7 +78,7 @@ export function CreateTicketModal({
             <label className="text-sm font-medium text-slate-700">Priority</label>
             <select
               value={priority}
-              onChange={(e) => setPriority(e.target.value)}
+              onChange={(e) => setPriority(e.target.value as Priority)}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             >
               <option value="LOW">Low</option>
