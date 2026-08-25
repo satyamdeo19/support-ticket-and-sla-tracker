@@ -19,6 +19,85 @@ The backend is built around a **Schema-First GraphQL** architecture, carefully s
 3. **Core Services (`src/services/`)**: Pure business logic modules (`ticket.service.ts`, `sla.service.ts`). These modules know nothing about GraphQL and can be tested completely in isolation or reused in REST controllers/CLI scripts. 
 4. **Prisma Client**: Uses the `@prisma/adapter-pg` driver to connect securely to the database. Injected into resolvers via the GraphQL context for seamless mocking in tests.
 
+### High-Level Design (HLD)
+
+```mermaid
+graph TD
+    subgraph Frontend [Frontend - React + Vite]
+        UI[React Components / Pages]
+        State[Urql GraphQL Client]
+        UI <--> State
+    end
+
+    subgraph Backend [Backend - Bun + GraphQL Yoga]
+        API[GraphQL API Layer]
+        Resolvers[Resolvers & Auth Guards]
+        Services[Business Logic & SLA Engine]
+        Prisma[Prisma ORM]
+        
+        API --> Resolvers
+        Resolvers --> Services
+        Services <--> Prisma
+    end
+
+    subgraph Database [PostgreSQL Database]
+        DB[(SLA Tracker DB)]
+    end
+
+    State <-->|HTTP POST /graphql| API
+    Prisma <-->|TCP| DB
+```
+
+---
+
+## 🗄 Database Schema (LLD)
+
+The database is designed with full relational integrity and indexed for high read performance on common queries.
+
+```mermaid
+erDiagram
+    User {
+        String id PK
+        String name
+        String email UK
+        String passwordHash
+        enum role "REPORTER | AGENT"
+        DateTime createdAt
+    }
+    
+    Ticket {
+        String id PK
+        String title
+        String description
+        enum priority "LOW | MEDIUM | HIGH | URGENT"
+        enum status "OPEN | IN_PROGRESS | RESOLVED | CLOSED"
+        String reporterId FK
+        String assigneeId FK "Nullable"
+        DateTime createdAt
+        DateTime firstResponseAt "Nullable"
+        DateTime resolvedAt "Nullable"
+    }
+
+    Comment {
+        String id PK
+        String content
+        String ticketId FK
+        String authorId FK
+        DateTime createdAt
+    }
+
+    Holiday {
+        String id PK
+        DateTime date UK
+        String name
+    }
+
+    User ||--o{ Ticket : "reports"
+    User ||--o{ Ticket : "is assigned to"
+    User ||--o{ Comment : "authors"
+    Ticket ||--o{ Comment : "has"
+```
+
 ---
 
 ## ⏱ SLA Calculation Approach
